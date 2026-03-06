@@ -8,17 +8,18 @@ interface ProductSelectorProps {
   loading?: boolean;
 }
 
-function getAdminProductUrl(productGid: string): string {
+function openProductAdmin(productGid: string) {
   const numericId = productGid.replace("gid://shopify/Product/", "");
-  try {
-    const match = window.location.pathname.match(/\/store\/([^/]+)/);
-    if (match) {
-      return `https://admin.shopify.com/store/${match[1]}/products/${numericId}`;
-    }
-  } catch {
-    // SSR fallback
+  // In an embedded Shopify app, window.shopify is injected by App Bridge
+  // and top-level navigation must go through the parent admin frame.
+  const shopOrigin = (window as any).shopify?.config?.shop || "";
+  const storeHandle = shopOrigin.replace(".myshopify.com", "");
+  if (storeHandle) {
+    window.open(
+      `https://admin.shopify.com/store/${storeHandle}/products/${numericId}`,
+      "_blank",
+    );
   }
-  return `/products/${numericId}`;
 }
 
 export default function ProductSelector({
@@ -241,11 +242,12 @@ export default function ProductSelector({
                           v.node.compareAtPrice !== "0" &&
                           v.node.compareAtPrice !== "0.00",
                       ) && <s-badge tone="warning">Has Compare-At</s-badge>}
-                    <a
-                      href={getAdminProductUrl(product.id)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openProductAdmin(product.id);
+                      }}
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
@@ -257,10 +259,11 @@ export default function ProductSelector({
                         border: "1px solid #c9cccf",
                         background: "transparent",
                         whiteSpace: "nowrap",
+                        cursor: "pointer",
                       }}
                     >
                       Edit ↗
-                    </a>
+                    </button>
                   </div>
                 </div>
               );
