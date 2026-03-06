@@ -1,11 +1,12 @@
 FROM node:20-alpine
-RUN apk add --no-cache openssl
+RUN apk add --no-cache openssl tzdata
 
 EXPOSE 3000
 
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV TZ=America/Los_Angeles
 
 COPY package.json package-lock.json* ./
 

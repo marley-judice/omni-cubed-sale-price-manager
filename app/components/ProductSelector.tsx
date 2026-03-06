@@ -214,6 +214,7 @@ export default function ProductSelector({
                       gap: "4px",
                       flexShrink: 0,
                       flexWrap: "wrap",
+                      alignItems: "center",
                       justifyContent: "flex-end",
                     }}
                   >
@@ -227,6 +228,25 @@ export default function ProductSelector({
                           v.node.compareAtPrice !== "0" &&
                           v.node.compareAtPrice !== "0.00",
                       ) && <s-badge tone="warning">Has Compare-At</s-badge>}
+                    <a
+                      href={`shopify://admin/products/${product.id.replace("gid://shopify/Product/", "")}`}
+                      target="_top"
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        padding: "4px 8px",
+                        fontSize: "12px",
+                        color: "#2c6ecb",
+                        textDecoration: "none",
+                        borderRadius: "4px",
+                        border: "1px solid #c9cccf",
+                        background: "transparent",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Edit ↗
+                    </a>
                   </div>
                 </div>
               );

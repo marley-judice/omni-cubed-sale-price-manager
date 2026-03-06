@@ -2,6 +2,7 @@ import cron from "node-cron";
 import prisma from "../db.server";
 import { unauthenticated } from "../shopify.server";
 import { activateScheduledSale, revertSale } from "./sale-engine";
+import { PACIFIC_TZ } from "./timezone";
 
 let schedulerStarted = false;
 
@@ -89,7 +90,7 @@ export function startScheduler() {
     } catch (err) {
       console.error("[Scheduler] Error in scheduled check:", err);
     }
-  });
+  }, { timezone: PACIFIC_TZ });
 
-  console.log("[Scheduler] Sale scheduler started (checking every 60s)");
+  console.log("[Scheduler] Sale scheduler started (checking every 60s, Pacific Time)");
 }

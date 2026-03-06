@@ -4,6 +4,7 @@ import {
   GET_VARIANT_CURRENT_PRICES_QUERY,
   type ShopifyProduct,
 } from "./shopify-queries";
+import { startOfDayPT, endOfDayPT } from "./timezone";
 
 const RATE_LIMIT_DELAY_MS = 500;
 
@@ -113,8 +114,8 @@ export async function createAndApplySale(
     data: {
       name,
       discountPercentage,
-      startDate: startDate ? new Date(startDate) : null,
-      endDate: endDate ? new Date(endDate) : null,
+      startDate: startDate ? startOfDayPT(startDate) : null,
+      endDate: endDate ? endOfDayPT(endDate) : null,
       active: false,
     },
   });
@@ -232,8 +233,8 @@ export async function createScheduledSale(
     data: {
       name,
       discountPercentage,
-      startDate: startDate ? new Date(startDate) : null,
-      endDate: endDate ? new Date(endDate) : null,
+      startDate: startDate ? startOfDayPT(startDate) : null,
+      endDate: endDate ? endOfDayPT(endDate) : null,
       active: false,
     },
   });
