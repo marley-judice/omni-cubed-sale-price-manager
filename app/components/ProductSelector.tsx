@@ -8,6 +8,19 @@ interface ProductSelectorProps {
   loading?: boolean;
 }
 
+function getAdminProductUrl(productGid: string): string {
+  const numericId = productGid.replace("gid://shopify/Product/", "");
+  try {
+    const match = window.location.pathname.match(/\/store\/([^/]+)/);
+    if (match) {
+      return `https://admin.shopify.com/store/${match[1]}/products/${numericId}`;
+    }
+  } catch {
+    // SSR fallback
+  }
+  return `/products/${numericId}`;
+}
+
 export default function ProductSelector({
   products,
   selectedProductIds,
@@ -229,8 +242,9 @@ export default function ProductSelector({
                           v.node.compareAtPrice !== "0.00",
                       ) && <s-badge tone="warning">Has Compare-At</s-badge>}
                     <a
-                      href={`shopify://admin/products/${product.id.replace("gid://shopify/Product/", "")}`}
-                      target="_top"
+                      href={getAdminProductUrl(product.id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
                       style={{
                         display: "inline-flex",
