@@ -498,7 +498,7 @@ export async function deleteSale(saleId: number): Promise<void> {
 }
 
 export function getExcludedCollectionPatterns(): string[] {
-  return ["replacement parts", "complementary products"];
+  return ["replacement parts"];
 }
 
 export function isProductExcluded(
@@ -509,10 +509,7 @@ export function isProductExcluded(
     const title = edge.node.title.toLowerCase();
     for (const pattern of patterns) {
       if (title.includes(pattern)) {
-        const label = pattern === "replacement parts"
-          ? "Replacement Parts"
-          : "Complementary Products";
-        return { excluded: true, reason: label };
+        return { excluded: true, reason: "Replacement Parts" };
       }
     }
   }
