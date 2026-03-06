@@ -35,7 +35,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     include: {
       _count: { select: { variants: true } },
       variants: {
-        select: { productId: true },
+        select: { productId: true, appliedAt: true },
         distinct: ["productId"],
       },
     },
@@ -43,18 +43,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
 
   return {
-    sales: sales.map((sale) => ({
-      id: sale.id,
-      name: sale.name,
-      discountPercentage: sale.discountPercentage,
-      startDate: sale.startDate?.toISOString() || null,
-      endDate: sale.endDate?.toISOString() || null,
-      active: sale.active,
-      createdAt: sale.createdAt.toISOString(),
-      variantCount: sale._count.variants,
-      productCount: sale.variants.length,
-      status: getSaleStatus(sale),
-    })),
+    sales: sales.map((sale) => {
+      const appliedAt = sale.variants.find((v) => v.appliedAt)?.appliedAt;
+      return {
+        id: sale.id,
+        name: sale.name,
+        discountPercentage: sale.discountPercentage,
+        startDate: sale.startDate?.toISOString() || null,
+        endDate: sale.endDate?.toISOString() || null,
+        active: sale.active,
+        createdAt: sale.createdAt.toISOString(),
+        appliedAt: appliedAt?.toISOString() || null,
+        variantCount: sale._count.variants,
+        productCount: sale.variants.length,
+        status: getSaleStatus(sale),
+      };
+    }),
   };
 };
 

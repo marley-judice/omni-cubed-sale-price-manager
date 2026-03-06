@@ -9,6 +9,7 @@ export interface SaleRow {
   endDate: string | null;
   active: boolean;
   createdAt: string;
+  appliedAt: string | null;
   variantCount: number;
   productCount: number;
   status: "active" | "scheduled" | "ended" | "reverted";
@@ -119,6 +120,7 @@ export default function SaleDashboard({
                   <th style={{ padding: "12px 8px", fontWeight: 600 }}>Discount</th>
                   <th style={{ padding: "12px 8px", fontWeight: 600 }}>Products</th>
                   <th style={{ padding: "12px 8px", fontWeight: 600 }}>Variants</th>
+                  <th style={{ padding: "12px 8px", fontWeight: 600 }}>Date Applied</th>
                   <th style={{ padding: "12px 8px", fontWeight: 600 }}>Date Range</th>
                   <th style={{ padding: "12px 8px", fontWeight: 600 }}>Actions</th>
                 </tr>
@@ -140,6 +142,9 @@ export default function SaleDashboard({
                     <td style={{ padding: "12px 8px" }}>{sale.discountPercentage}%</td>
                     <td style={{ padding: "12px 8px" }}>{sale.productCount}</td>
                     <td style={{ padding: "12px 8px" }}>{sale.variantCount}</td>
+                    <td style={{ padding: "12px 8px" }}>
+                      {formatDate(sale.appliedAt)}
+                    </td>
                     <td style={{ padding: "12px 8px" }}>
                       {formatDate(sale.startDate)} → {formatDate(sale.endDate)}
                     </td>
