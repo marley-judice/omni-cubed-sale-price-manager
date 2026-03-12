@@ -76,6 +76,7 @@ export default function CreateSale({
       products: selectedProducts.map((p) => ({
         id: p.id,
         title: p.title,
+        handle: p.handle,
         variants: p.variants.edges.map((v) => ({
           id: v.node.id,
           title: v.node.title,

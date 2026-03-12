@@ -14,11 +14,24 @@ function formatPrice(price: string): string {
   return isNaN(num) ? price : `$${num.toFixed(2)}`;
 }
 
+const STORE_DOMAIN = "https://omnicubed.com";
+
 function escapeCsvField(field: string): string {
   if (field.includes(",") || field.includes('"') || field.includes("\n")) {
     return `"${field.replace(/"/g, '""')}"`;
   }
   return field;
+}
+
+function extractNumericId(gid: string): string {
+  const match = gid.match(/\/(\d+)$/);
+  return match ? match[1] : gid;
+}
+
+function buildProductUrl(handle: string, variantGid: string): string {
+  if (!handle) return "";
+  const numericId = extractNumericId(variantGid);
+  return `${STORE_DOMAIN}/products/${handle}?variant=${numericId}`;
 }
 
 function buildCsv(
@@ -33,10 +46,12 @@ function buildCsv(
     "Original Compare-At Price",
     "Sale Price",
     `Discount (${discountPercentage}%)`,
+    "URL",
   ];
 
   const rows = variants.map((v) => {
     const savings = (parseFloat(v.originalPrice) - parseFloat(v.newSalePrice)).toFixed(2);
+    const url = buildProductUrl(v.productHandle, v.variantId);
     return [
       escapeCsvField(v.productTitle),
       escapeCsvField(v.variantTitle),
@@ -44,6 +59,7 @@ function buildCsv(
       v.originalCompareAtPrice || "",
       v.newSalePrice,
       savings,
+      escapeCsvField(url),
     ].join(",");
   });
 
@@ -113,7 +129,7 @@ export default function SaleDetail({
           background: "white",
           borderRadius: "12px",
           padding: "24px",
-          maxWidth: "900px",
+          maxWidth: "1100px",
           width: "95%",
           maxHeight: "80vh",
           display: "flex",
@@ -192,6 +208,7 @@ export default function SaleDetail({
                   <th style={{ padding: "10px 8px", fontWeight: 600, textAlign: "right" }}>
                     Savings
                   </th>
+                  <th style={{ padding: "10px 8px", fontWeight: 600 }}>URL</th>
                 </tr>
               </thead>
               <tbody>
@@ -199,6 +216,7 @@ export default function SaleDetail({
                   const savings = (
                     parseFloat(v.originalPrice) - parseFloat(v.newSalePrice)
                   ).toFixed(2);
+                  const url = buildProductUrl(v.productHandle, v.variantId);
                   return (
                     <tr
                       key={idx}
@@ -236,6 +254,25 @@ export default function SaleDetail({
                         }}
                       >
                         -{formatPrice(savings)}
+                      </td>
+                      <td style={{ padding: "10px 8px" }}>
+                        {url ? (
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              color: "#2c6ecb",
+                              textDecoration: "underline",
+                              fontSize: "13px",
+                              wordBreak: "break-all",
+                            }}
+                          >
+                            View
+                          </a>
+                        ) : (
+                          "—"
+                        )}
                       </td>
                     </tr>
                   );

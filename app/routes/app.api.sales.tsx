@@ -12,7 +12,9 @@ import {
 
 export interface SaleVariantRow {
   productTitle: string;
+  productHandle: string;
   variantTitle: string;
+  variantId: string;
   originalPrice: string;
   originalCompareAtPrice: string | null;
   newSalePrice: string;
@@ -36,7 +38,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
     const variants: SaleVariantRow[] = sale.variants.map((v) => ({
       productTitle: v.productTitle,
+      productHandle: v.productHandle,
       variantTitle: v.variantTitle,
+      variantId: v.variantId,
       originalPrice: v.originalPrice,
       originalCompareAtPrice: v.originalCompareAtPrice,
       newSalePrice: v.newSalePrice,

@@ -52,6 +52,7 @@ model SaleVariant {
   variantId              String
   productId              String
   productTitle           String    @default("")
+  productHandle          String    @default("")
   variantTitle           String    @default("")
   originalPrice          String
   originalCompareAtPrice String?

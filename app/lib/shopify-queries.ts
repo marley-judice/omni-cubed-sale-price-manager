@@ -5,6 +5,7 @@ export const GET_PRODUCTS_QUERY = `#graphql
         node {
           id
           title
+          handle
           featuredImage {
             url
           }
@@ -67,6 +68,7 @@ export const GET_VARIANT_CURRENT_PRICES_QUERY = `#graphql
 export interface ShopifyProduct {
   id: string;
   title: string;
+  handle: string;
   featuredImage: { url: string } | null;
   variants: {
     edges: Array<{

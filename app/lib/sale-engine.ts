@@ -24,6 +24,7 @@ function calculateSalePrice(
 interface SelectedProduct {
   id: string;
   title: string;
+  handle: string;
   variants: Array<{
     id: string;
     title: string;
@@ -132,6 +133,7 @@ export async function createAndApplySale(
         variantId: variant.id,
         productId: product.id,
         productTitle: product.title,
+        productHandle: product.handle,
         variantTitle: variant.title,
         originalPrice: variant.price,
         originalCompareAtPrice: variant.compareAtPrice,
@@ -245,6 +247,7 @@ export async function createScheduledSale(
       variantId: variant.id,
       productId: product.id,
       productTitle: product.title,
+      productHandle: product.handle,
       variantTitle: variant.title,
       originalPrice: variant.price,
       originalCompareAtPrice: variant.compareAtPrice,
