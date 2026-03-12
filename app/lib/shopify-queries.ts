@@ -65,6 +65,17 @@ export const GET_VARIANT_CURRENT_PRICES_QUERY = `#graphql
   }
 `;
 
+export const GET_PRODUCT_HANDLES_QUERY = `#graphql
+  query GetProductHandles($ids: [ID!]!) {
+    nodes(ids: $ids) {
+      ... on Product {
+        id
+        handle
+      }
+    }
+  }
+`;
+
 export interface ShopifyProduct {
   id: string;
   title: string;

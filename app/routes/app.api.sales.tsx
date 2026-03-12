@@ -1,6 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+import { GET_PRODUCT_HANDLES_QUERY } from "../lib/shopify-queries";
 import {
   createAndApplySale,
   createScheduledSale,
@@ -21,7 +22,7 @@ export interface SaleVariantRow {
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
+  const { admin } = await authenticate.admin(request);
 
   const url = new URL(request.url);
   const saleId = url.searchParams.get("saleId");
@@ -36,9 +37,47 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       return { error: "Sale not found" };
     }
 
+    const missingHandleProductIds = [
+      ...new Set(
+        sale.variants
+          .filter((v) => !v.productHandle)
+          .map((v) => v.productId),
+      ),
+    ];
+
+    const handleMap = new Map<string, string>();
+
+    if (missingHandleProductIds.length > 0) {
+      try {
+        const batchSize = 50;
+        for (let i = 0; i < missingHandleProductIds.length; i += batchSize) {
+          const batch = missingHandleProductIds.slice(i, i + batchSize);
+          const response = await admin.graphql(GET_PRODUCT_HANDLES_QUERY, {
+            variables: { ids: batch },
+          });
+          const json = await response.json();
+          const nodes = json.data?.nodes || [];
+          for (const node of nodes) {
+            if (node?.id && node?.handle) {
+              handleMap.set(node.id, node.handle);
+            }
+          }
+        }
+
+        for (const [productId, handle] of handleMap) {
+          await prisma.saleVariant.updateMany({
+            where: { saleId: sale.id, productId, productHandle: "" },
+            data: { productHandle: handle },
+          });
+        }
+      } catch {
+        // Non-critical — URLs will just be missing
+      }
+    }
+
     const variants: SaleVariantRow[] = sale.variants.map((v) => ({
       productTitle: v.productTitle,
-      productHandle: v.productHandle,
+      productHandle: v.productHandle || handleMap.get(v.productId) || "",
       variantTitle: v.variantTitle,
       variantId: v.variantId,
       originalPrice: v.originalPrice,
