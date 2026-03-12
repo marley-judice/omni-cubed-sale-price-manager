@@ -142,7 +142,23 @@ export default function SaleDashboard({
                       <StatusBadge status={sale.status} />
                     </td>
                     <td style={{ padding: "12px 8px" }}>{sale.discountPercentage}%</td>
-                    <td style={{ padding: "12px 8px" }}>{sale.productCount}</td>
+                    <td style={{ padding: "12px 8px" }}>
+                      <button
+                        type="button"
+                        onClick={() => onViewSale(sale)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          padding: 0,
+                          color: "#2c6ecb",
+                          textDecoration: "underline",
+                          cursor: "pointer",
+                          font: "inherit",
+                        }}
+                      >
+                        {sale.productCount}
+                      </button>
+                    </td>
                     <td style={{ padding: "12px 8px" }}>{sale.variantCount}</td>
                     <td style={{ padding: "12px 8px" }}>
                       {formatDate(sale.appliedAt)}
@@ -152,12 +168,6 @@ export default function SaleDashboard({
                     </td>
                     <td style={{ padding: "12px 8px" }}>
                       <s-stack direction="inline" gap="base">
-                        <s-button
-                          variant="tertiary"
-                          onClick={() => onViewSale(sale)}
-                        >
-                          View
-                        </s-button>
                         {sale.status === "active" && (
                           <s-button
                             variant="tertiary"
