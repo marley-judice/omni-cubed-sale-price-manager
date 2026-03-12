@@ -10,8 +10,44 @@ import {
   activateScheduledSale,
 } from "../lib/sale-engine";
 
+export interface SaleVariantRow {
+  productTitle: string;
+  variantTitle: string;
+  originalPrice: string;
+  originalCompareAtPrice: string | null;
+  newSalePrice: string;
+}
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
+
+  const url = new URL(request.url);
+  const saleId = url.searchParams.get("saleId");
+
+  if (saleId) {
+    const sale = await prisma.sale.findUnique({
+      where: { id: parseInt(saleId) },
+      include: { variants: true },
+    });
+
+    if (!sale) {
+      return { error: "Sale not found" };
+    }
+
+    const variants: SaleVariantRow[] = sale.variants.map((v) => ({
+      productTitle: v.productTitle,
+      variantTitle: v.variantTitle,
+      originalPrice: v.originalPrice,
+      originalCompareAtPrice: v.originalCompareAtPrice,
+      newSalePrice: v.newSalePrice,
+    }));
+
+    return {
+      saleVariants: variants,
+      saleName: sale.name,
+      discountPercentage: sale.discountPercentage,
+    };
+  }
 
   const sales = await prisma.sale.findMany({
     include: {

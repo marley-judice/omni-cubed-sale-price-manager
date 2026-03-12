@@ -6,6 +6,7 @@ import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import prisma from "../db.server";
 import SaleDashboard, { type SaleRow } from "../components/SaleDashboard";
+import SaleDetail from "../components/SaleDetail";
 import CreateSale from "../components/CreateSale";
 import type { ProductWithExclusion } from "./app.api.products";
 
@@ -71,6 +72,7 @@ export default function Index() {
   const [sales, setSales] = useState<SaleRow[]>(initialSales);
   const [products, setProducts] = useState<ProductWithExclusion[]>([]);
   const [productsLoaded, setProductsLoaded] = useState(false);
+  const [viewingSale, setViewingSale] = useState<SaleRow | null>(null);
 
   useEffect(() => {
     if (!productsLoaded && productsFetcher.state === "idle" && !productsFetcher.data) {
@@ -120,7 +122,17 @@ export default function Index() {
           sales={sales}
           onRefresh={refreshSales}
           onToast={handleToast}
+          onViewSale={setViewingSale}
         />
+
+        {viewingSale && (
+          <SaleDetail
+            saleId={viewingSale.id}
+            saleName={viewingSale.name}
+            discountPercentage={viewingSale.discountPercentage}
+            onClose={() => setViewingSale(null)}
+          />
+        )}
 
         <CreateSale
           products={products}

@@ -19,6 +19,7 @@ interface SaleDashboardProps {
   sales: SaleRow[];
   onRefresh: () => void;
   onToast: (message: string, isError?: boolean) => void;
+  onViewSale: (sale: SaleRow) => void;
 }
 
 type BadgeTone = "success" | "warning" | "neutral" | "info" | "critical" | "caution";
@@ -51,6 +52,7 @@ export default function SaleDashboard({
   sales,
   onRefresh,
   onToast,
+  onViewSale,
 }: SaleDashboardProps) {
   const fetcher = useFetcher();
   const [confirmAction, setConfirmAction] = useState<{
@@ -150,6 +152,12 @@ export default function SaleDashboard({
                     </td>
                     <td style={{ padding: "12px 8px" }}>
                       <s-stack direction="inline" gap="base">
+                        <s-button
+                          variant="tertiary"
+                          onClick={() => onViewSale(sale)}
+                        >
+                          View
+                        </s-button>
                         {sale.status === "active" && (
                           <s-button
                             variant="tertiary"
