@@ -1,5 +1,5 @@
 import { useFetcher } from "react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface SaleRow {
   id: number;
@@ -62,6 +62,7 @@ export default function SaleDashboard({
   } | null>(null);
 
   const isLoading = fetcher.state !== "idle";
+  const lastHandledData = useRef<unknown>(null);
 
   const handleAction = useCallback(
     (type: "revert" | "activate" | "delete", saleId: number, saleName: string) => {
@@ -84,7 +85,8 @@ export default function SaleDashboard({
 
   // React to fetcher completing instead of using a blind timeout
   useEffect(() => {
-    if (fetcher.state === "idle" && fetcher.data) {
+    if (fetcher.state === "idle" && fetcher.data && fetcher.data !== lastHandledData.current) {
+      lastHandledData.current = fetcher.data;
       const data = fetcher.data as { success?: boolean; error?: string };
       if (data.error) {
         onToast(data.error, true);
@@ -198,7 +200,8 @@ export default function SaleDashboard({
                             Activate
                           </s-button>
                         )}
-                        {(sale.status === "reverted" ||
+                        {(sale.status === "scheduled" ||
+                          sale.status === "reverted" ||
                           sale.status === "ended") && (
                           <s-button
                             variant="tertiary"

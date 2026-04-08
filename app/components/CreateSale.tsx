@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useFetcher } from "react-router";
 import ProductSelector from "./ProductSelector";
 import type { ProductWithExclusion } from "../routes/app.api.products";
@@ -87,6 +87,8 @@ export default function CreateSale({
     };
   }, [saleName, discountNum, startDate, endDate, selectedProducts]);
 
+  const lastHandledData = useRef<unknown>(null);
+
   const handleApply = useCallback(() => {
     const formData = new FormData();
     formData.set("intent", "create_apply");
@@ -96,19 +98,7 @@ export default function CreateSale({
       action: "/app/api/sales",
     });
     setShowConfirm(null);
-
-    setTimeout(() => {
-      setSaleName("");
-      setDiscountPercentage("");
-      setStartDate("");
-      setEndDate("");
-      setSelectedProductIds(new Set());
-      onToast(
-        `Sale applied to ${selectedProducts.length} products (${totalVariants} variants)`,
-      );
-      onSaleCreated();
-    }, 2000);
-  }, [buildPayload, fetcher, onSaleCreated, onToast, selectedProducts.length, totalVariants]);
+  }, [buildPayload, fetcher]);
 
   const handleSchedule = useCallback(() => {
     const formData = new FormData();
@@ -119,17 +109,25 @@ export default function CreateSale({
       action: "/app/api/sales",
     });
     setShowConfirm(null);
+  }, [buildPayload, fetcher]);
 
-    setTimeout(() => {
-      setSaleName("");
-      setDiscountPercentage("");
-      setStartDate("");
-      setEndDate("");
-      setSelectedProductIds(new Set());
-      onToast("Scheduled sale created successfully");
-      onSaleCreated();
-    }, 2000);
-  }, [buildPayload, fetcher, onSaleCreated, onToast]);
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data && fetcher.data !== lastHandledData.current) {
+      lastHandledData.current = fetcher.data;
+      const data = fetcher.data as { success?: boolean; error?: string };
+      if (data.error && data.error !== "conflict") {
+        onToast(data.error, true);
+      } else if (data.success) {
+        setSaleName("");
+        setDiscountPercentage("");
+        setStartDate("");
+        setEndDate("");
+        setSelectedProductIds(new Set());
+        onToast("Sale created successfully");
+        onSaleCreated();
+      }
+    }
+  }, [fetcher.state, fetcher.data, onToast, onSaleCreated]);
 
   return (
     <s-section heading="Create New Sale">

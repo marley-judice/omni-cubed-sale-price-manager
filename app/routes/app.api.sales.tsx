@@ -172,15 +172,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         };
       }
 
-      const result = await createAndApplySale(admin, {
-        name: name || "Untitled Sale",
-        discountPercentage,
-        startDate,
-        endDate,
-        products,
-      });
+      try {
+        const result = await createAndApplySale(admin, {
+          name: name || "Untitled Sale",
+          discountPercentage,
+          startDate,
+          endDate,
+          products,
+        });
 
-      return { success: true, result };
+        return { success: true, result };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) };
+      }
     }
 
     case "create_scheduled": {
@@ -202,15 +206,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         return { error: "Start date is required for scheduled sales" };
       }
 
-      const result = await createScheduledSale({
-        name: name || "Untitled Sale",
-        discountPercentage,
-        startDate,
-        endDate,
-        products,
-      });
+      try {
+        const result = await createScheduledSale({
+          name: name || "Untitled Sale",
+          discountPercentage,
+          startDate,
+          endDate,
+          products,
+        });
 
-      return { success: true, result };
+        return { success: true, result };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) };
+      }
     }
 
     case "activate": {
