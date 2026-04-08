@@ -404,6 +404,18 @@ export async function activateScheduledSale(
     throw new Error("Sale not found or already active");
   }
 
+  // Check for conflicts with currently active sales before applying
+  const allVariantIds = sale.variants.map((v) => v.variantId);
+  const conflicts = await checkVariantConflicts(allVariantIds);
+  if (conflicts.length > 0) {
+    const details = conflicts
+      .map((c) => `"${c.saleName}" (${c.variantIds.length} variants)`)
+      .join(", ");
+    throw new Error(
+      `Cannot activate: ${allVariantIds.length > conflicts.reduce((sum, c) => sum + c.variantIds.length, 0) ? "some" : ""} variants conflict with active sale(s): ${details}`,
+    );
+  }
+
   const mutationPayloads = new Map<
     string,
     Array<{ id: string; price: string; compareAtPrice: string }>

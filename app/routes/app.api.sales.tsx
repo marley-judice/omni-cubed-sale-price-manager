@@ -215,20 +215,32 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     case "activate": {
       const saleId = parseInt(formData.get("saleId") as string);
-      const result = await activateScheduledSale(admin, saleId);
-      return { success: true, result };
+      try {
+        const result = await activateScheduledSale(admin, saleId);
+        return { success: true, result };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) };
+      }
     }
 
     case "revert": {
       const saleId = parseInt(formData.get("saleId") as string);
-      const result = await revertSale(admin, saleId);
-      return { success: true, result };
+      try {
+        const result = await revertSale(admin, saleId);
+        return { success: true, result };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) };
+      }
     }
 
     case "delete": {
       const saleId = parseInt(formData.get("saleId") as string);
-      await deleteSale(saleId);
-      return { success: true };
+      try {
+        await deleteSale(saleId);
+        return { success: true };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) };
+      }
     }
 
     case "check_conflicts": {

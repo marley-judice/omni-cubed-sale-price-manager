@@ -1,5 +1,5 @@
 import { useFetcher } from "react-router";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 export interface SaleRow {
   id: number;
@@ -80,14 +80,20 @@ export default function SaleDashboard({
       action: "/app/api/sales",
     });
     setConfirmAction(null);
+  }, [confirmAction, fetcher]);
 
-    setTimeout(() => {
-      onToast(
-        `Sale "${confirmAction.saleName}" ${confirmAction.type === "revert" ? "reverted" : confirmAction.type === "activate" ? "activated" : "deleted"} successfully`,
-      );
+  // React to fetcher completing instead of using a blind timeout
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data) {
+      const data = fetcher.data as { success?: boolean; error?: string };
+      if (data.error) {
+        onToast(data.error, true);
+      } else if (data.success) {
+        onToast("Sale updated successfully");
+      }
       onRefresh();
-    }, 1500);
-  }, [confirmAction, fetcher, onRefresh, onToast]);
+    }
+  }, [fetcher.state, fetcher.data, onToast, onRefresh]);
 
   return (
     <s-section heading="Sales Dashboard">

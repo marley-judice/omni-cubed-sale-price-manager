@@ -16,6 +16,8 @@ database.sqlite
 .env
 .env.*
 
+#cursor
+.cursor
 
 
 
