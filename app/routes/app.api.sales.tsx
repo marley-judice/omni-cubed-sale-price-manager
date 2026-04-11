@@ -235,8 +235,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const saleId = parseInt(formData.get("saleId") as string);
       try {
         const result = await revertSale(admin, saleId);
+        if (result.failedVariants > 0 && result.revertedVariants === 0) {
+          return {
+            error: `Revert failed for all ${result.failedVariants} variants. ${result.errors[0] || "Check server logs for details."}`,
+          };
+        }
+        if (result.failedVariants > 0) {
+          return {
+            error: `Partially reverted: ${result.revertedVariants} succeeded, ${result.failedVariants} failed. ${result.errors[0] || ""}`,
+          };
+        }
         return { success: true, result };
       } catch (err) {
+        console.error("[revert action] Unhandled error:", err);
         return { error: err instanceof Error ? err.message : String(err) };
       }
     }
