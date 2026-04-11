@@ -284,12 +284,15 @@ export async function revertSale(
   saleId: number,
   skipModifiedCheck = false,
 ): Promise<RevertResult> {
+  // Fetch ALL variants for this sale — not just un-reverted ones.
+  // Previous reverts may have marked revertedAt in the DB without
+  // actually updating Shopify, so we always push original prices.
   const saleVariants = await prisma.saleVariant.findMany({
-    where: { saleId, revertedAt: null },
+    where: { saleId },
   });
 
   if (saleVariants.length === 0) {
-    console.log(`[revertSale] Sale ${saleId}: no un-reverted variants, deactivating sale only`);
+    console.log(`[revertSale] Sale ${saleId}: no variants at all, deactivating sale only`);
     await prisma.sale.update({
       where: { id: saleId },
       data: { active: false },
@@ -303,7 +306,7 @@ export async function revertSale(
           failedVariants: 0,
           modifiedVariants: [],
           errors: [],
-          note: "No un-reverted variants found; sale deactivated only",
+          note: "No variants found; sale deactivated only",
         }),
       },
     });
@@ -411,16 +414,14 @@ export async function revertSale(
       data: { active: false },
     });
     await prisma.saleVariant.updateMany({
-      where: { saleId, revertedAt: null },
+      where: { saleId },
       data: { revertedAt: now },
     });
   } else if (successfulVariantIds.length > 0) {
-    // Partial success: only mark successfully reverted variants
     await prisma.saleVariant.updateMany({
       where: { saleId, variantId: { in: successfulVariantIds } },
       data: { revertedAt: now },
     });
-    // Don't deactivate the sale — some variants still have sale prices on Shopify
   }
 
   await prisma.auditLog.create({

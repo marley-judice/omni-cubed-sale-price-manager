@@ -176,7 +176,7 @@ export default function SaleDashboard({
                     </td>
                     <td style={{ padding: "12px 8px" }}>
                       <s-stack direction="inline" gap="base">
-                        {sale.status === "active" && (
+                        {(sale.status === "active" || sale.status === "ended") && (
                           <s-button
                             variant="tertiary"
                             tone="critical"
