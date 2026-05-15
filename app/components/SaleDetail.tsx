@@ -1,12 +1,17 @@
 import { useFetcher } from "react-router";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import type { SaleVariantRow } from "../routes/app.api.sales";
+import type { ProductWithExclusion } from "../routes/app.api.products";
+import ProductSelector from "./ProductSelector";
 
 interface SaleDetailProps {
   saleId: number;
   saleName: string;
   discountPercentage: number;
+  saleStatus: "active" | "scheduled" | "ended" | "reverted";
+  products: ProductWithExclusion[];
   onClose: () => void;
+  onUpdated?: () => void;
 }
 
 function formatPrice(price: string): string {
@@ -82,11 +87,20 @@ export default function SaleDetail({
   saleId,
   saleName,
   discountPercentage,
+  saleStatus,
+  products,
   onClose,
+  onUpdated,
 }: SaleDetailProps) {
   const fetcher = useFetcher();
+  const updateFetcher = useFetcher();
   const [variants, setVariants] = useState<SaleVariantRow[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const lastHandledUpdateData = useRef<unknown>(null);
 
   useEffect(() => {
     if (fetcher.state === "idle" && !loaded) {
@@ -101,6 +115,90 @@ export default function SaleDetail({
     }
   }, [fetcher.data]);
 
+  // Pre-select products currently in the sale when entering edit mode
+  const originalProductIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const v of variants) {
+      ids.add(v.productId);
+    }
+    return ids;
+  }, [variants]);
+
+  const handleStartEdit = useCallback(() => {
+    setSelectedProductIds(new Set(originalProductIds));
+    setIsEditing(true);
+  }, [originalProductIds]);
+
+  const handleCancelEdit = useCallback(() => {
+    setIsEditing(false);
+    setShowConfirm(false);
+  }, []);
+
+  const addedProducts = useMemo(() => {
+    const added: string[] = [];
+    for (const id of selectedProductIds) {
+      if (!originalProductIds.has(id)) added.push(id);
+    }
+    return added;
+  }, [selectedProductIds, originalProductIds]);
+
+  const removedProducts = useMemo(() => {
+    const removed: string[] = [];
+    for (const id of originalProductIds) {
+      if (!selectedProductIds.has(id)) removed.push(id);
+    }
+    return removed;
+  }, [selectedProductIds, originalProductIds]);
+
+  const hasDiff = addedProducts.length > 0 || removedProducts.length > 0;
+
+  const handleSave = useCallback(() => {
+    if (saleStatus === "active" && !showConfirm) {
+      setShowConfirm(true);
+      return;
+    }
+    setShowConfirm(false);
+
+    const selectedProducts = products
+      .filter((p) => selectedProductIds.has(p.id))
+      .map((p) => ({
+        id: p.id,
+        title: p.title,
+        handle: p.handle,
+        variants: p.variants.edges.map((v) => ({
+          id: v.node.id,
+          title: v.node.title,
+          price: v.node.price,
+          compareAtPrice: v.node.compareAtPrice,
+        })),
+      }));
+
+    const formData = new FormData();
+    formData.set("intent", "update_products");
+    formData.set("saleId", String(saleId));
+    formData.set("products", JSON.stringify(selectedProducts));
+    updateFetcher.submit(formData, {
+      method: "POST",
+      action: "/app/api/sales",
+    });
+  }, [saleStatus, showConfirm, products, selectedProductIds, saleId, updateFetcher]);
+
+  useEffect(() => {
+    if (
+      updateFetcher.state === "idle" &&
+      updateFetcher.data &&
+      updateFetcher.data !== lastHandledUpdateData.current
+    ) {
+      lastHandledUpdateData.current = updateFetcher.data;
+      const data = updateFetcher.data as { success?: boolean; error?: string };
+      if (data.success) {
+        setIsEditing(false);
+        setLoaded(false);
+        onUpdated?.();
+      }
+    }
+  }, [updateFetcher.state, updateFetcher.data, onUpdated]);
+
   const handleExportCsv = useCallback(() => {
     const csv = buildCsv(variants, saleName, discountPercentage);
     const safeFilename = saleName.replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase();
@@ -108,6 +206,7 @@ export default function SaleDetail({
   }, [variants, saleName, discountPercentage]);
 
   const isLoading = fetcher.state !== "idle";
+  const isUpdating = updateFetcher.state !== "idle";
 
   return (
     <div
@@ -154,21 +253,156 @@ export default function SaleDetail({
             </s-paragraph>
           </div>
           <s-stack direction="inline" gap="base">
-            <s-button
-              variant="primary"
-              onClick={handleExportCsv}
-              {...(isLoading || variants.length === 0 ? { disabled: true } : {})}
-            >
-              Export CSV
-            </s-button>
-            <s-button variant="tertiary" onClick={onClose}>
-              Close
+            {!isEditing && (
+              <>
+                <s-button
+                  variant="primary"
+                  onClick={handleStartEdit}
+                  {...(!loaded ? { disabled: true } : {})}
+                >
+                  Edit Products
+                </s-button>
+                <s-button
+                  onClick={handleExportCsv}
+                  {...(isLoading || variants.length === 0 ? { disabled: true } : {})}
+                >
+                  Export CSV
+                </s-button>
+              </>
+            )}
+            <s-button variant="tertiary" onClick={isEditing ? handleCancelEdit : onClose}>
+              {isEditing ? "Cancel" : "Close"}
             </s-button>
           </s-stack>
         </div>
 
+        {updateFetcher.data && "error" in updateFetcher.data && (
+          <s-banner tone="critical" style={{ marginBottom: "12px" }}>
+            {String((updateFetcher.data as { error: string }).error)}
+          </s-banner>
+        )}
+
+        {updateFetcher.data && "warning" in updateFetcher.data && (
+          <s-banner tone="warning" style={{ marginBottom: "12px" }}>
+            {String((updateFetcher.data as { warning: string }).warning)}
+          </s-banner>
+        )}
+
         <div style={{ overflowY: "auto", flex: 1 }}>
-          {isLoading && !loaded ? (
+          {isEditing ? (
+            <div>
+              {saleStatus === "active" && (
+                <s-banner tone="warning">
+                  This sale is active. Adding or removing products will update live
+                  storefront prices immediately.
+                </s-banner>
+              )}
+
+              <div style={{ marginTop: "12px" }}>
+                <ProductSelector
+                  products={products}
+                  selectedProductIds={selectedProductIds}
+                  onSelectionChange={setSelectedProductIds}
+                />
+              </div>
+
+              {hasDiff && (
+                <div
+                  style={{
+                    marginTop: "12px",
+                    padding: "12px",
+                    background: "#f8f9fa",
+                    borderRadius: "8px",
+                    fontSize: "14px",
+                  }}
+                >
+                  <strong>Changes:</strong>{" "}
+                  {addedProducts.length > 0 && (
+                    <span style={{ color: "#2e7d32" }}>
+                      +{addedProducts.length} product{addedProducts.length !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                  {addedProducts.length > 0 && removedProducts.length > 0 && ", "}
+                  {removedProducts.length > 0 && (
+                    <span style={{ color: "#c62828" }}>
+                      -{removedProducts.length} product{removedProducts.length !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <div style={{ marginTop: "16px" }}>
+                <s-stack direction="inline" gap="base">
+                  <s-button
+                    variant="primary"
+                    onClick={handleSave}
+                    {...(!hasDiff || isUpdating || selectedProductIds.size === 0
+                      ? { disabled: true }
+                      : {})}
+                    {...(isUpdating ? { loading: true } : {})}
+                  >
+                    Save Changes
+                  </s-button>
+                  <s-button variant="tertiary" onClick={handleCancelEdit}>
+                    Cancel
+                  </s-button>
+                </s-stack>
+              </div>
+
+              {showConfirm && (
+                <div
+                  style={{
+                    position: "fixed",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    background: "rgba(0,0,0,0.5)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    zIndex: 10000,
+                  }}
+                >
+                  <div
+                    style={{
+                      background: "white",
+                      borderRadius: "12px",
+                      padding: "24px",
+                      maxWidth: "480px",
+                      width: "90%",
+                      boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+                    }}
+                  >
+                    <s-heading>Update Active Sale?</s-heading>
+                    <div style={{ margin: "16px 0" }}>
+                      <s-paragraph>
+                        This sale is currently active. Changes will update live storefront prices:
+                      </s-paragraph>
+                      <ul style={{ margin: "8px 0", paddingLeft: "20px", fontSize: "14px" }}>
+                        {addedProducts.length > 0 && (
+                          <li>{addedProducts.length} product(s) will be discounted</li>
+                        )}
+                        {removedProducts.length > 0 && (
+                          <li>
+                            {removedProducts.length} product(s) will have prices restored
+                          </li>
+                        )}
+                      </ul>
+                    </div>
+                    <s-stack direction="inline" gap="base">
+                      <s-button variant="primary" tone="critical" onClick={handleSave}>
+                        Confirm Update
+                      </s-button>
+                      <s-button variant="tertiary" onClick={() => setShowConfirm(false)}>
+                        Cancel
+                      </s-button>
+                    </s-stack>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : isLoading && !loaded ? (
             <s-box padding="large-200">
               <s-paragraph>Loading products...</s-paragraph>
             </s-box>

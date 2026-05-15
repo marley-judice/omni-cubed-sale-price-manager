@@ -130,7 +130,13 @@ export default function Index() {
             saleId={viewingSale.id}
             saleName={viewingSale.name}
             discountPercentage={viewingSale.discountPercentage}
+            saleStatus={viewingSale.status}
+            products={products}
             onClose={() => setViewingSale(null)}
+            onUpdated={() => {
+              refreshSales();
+              setViewingSale(null);
+            }}
           />
         )}
 

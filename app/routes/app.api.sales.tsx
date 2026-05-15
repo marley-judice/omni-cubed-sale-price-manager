@@ -9,9 +9,11 @@ import {
   deleteSale,
   checkVariantConflicts,
   activateScheduledSale,
+  updateSaleProducts,
 } from "../lib/sale-engine";
 
 export interface SaleVariantRow {
+  productId: string;
   productTitle: string;
   productHandle: string;
   variantTitle: string;
@@ -76,6 +78,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
 
     const variants: SaleVariantRow[] = sale.variants.map((v) => ({
+      productId: v.productId,
       productTitle: v.productTitle,
       productHandle: v.productHandle || handleMap.get(v.productId) || "",
       variantTitle: v.variantTitle,
@@ -89,6 +92,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       saleVariants: variants,
       saleName: sale.name,
       discountPercentage: sale.discountPercentage,
+      saleActive: sale.active,
     };
   }
 
@@ -274,6 +278,29 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           success: true,
           revertedBeforeDelete: result.revertedBeforeDelete,
         };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+
+    case "update_products": {
+      const saleId = parseInt(formData.get("saleId") as string);
+      const products = JSON.parse(formData.get("products") as string);
+
+      if (!products || products.length === 0) {
+        return { error: "At least one product must remain in the sale" };
+      }
+
+      try {
+        const result = await updateSaleProducts(admin, saleId, products);
+        if (result.addFailed > 0 || result.removeFailed > 0) {
+          return {
+            success: true,
+            warning: `Partially updated: ${result.added} added, ${result.removed} removed, ${result.addFailed + result.removeFailed} failed.`,
+            result,
+          };
+        }
+        return { success: true, result };
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) };
       }
