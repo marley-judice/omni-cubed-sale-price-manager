@@ -327,9 +327,6 @@ export async function revertSale(
 
   console.log(`[revertSale] Sale ${saleId}: reverting ${saleVariants.length} variants`);
 
-  // Fetch live prices from Shopify to detect stale stored originals.
-  // If a variant's stored originalPrice looks wrong (e.g. it equals the
-  // sale price of another sale), the live compare-at price is the real MSRP.
   const livePrices = new Map<string, { price: string; compareAtPrice: string | null }>();
   const modifiedVariants: string[] = [];
   const batchSize = 50;
@@ -362,51 +359,14 @@ export async function revertSale(
     if (i + batchSize < allVariantIds.length) await sleep(RATE_LIMIT_DELAY_MS);
   }
 
-  // Build revert payloads, correcting stale originals using live compare-at
-  const dbUpdates: Array<{ variantId: string; originalPrice: string; originalCompareAtPrice: string | null }> = [];
-
   const revertPayloads = groupVariantsByProduct(
-    saleVariants.map((sv) => {
-      let restorePrice = sv.originalPrice;
-      let restoreCompareAt = sv.originalCompareAtPrice;
-
-      const live = livePrices.get(sv.variantId);
-      if (live?.compareAtPrice) {
-        const cap = parseFloat(live.compareAtPrice);
-        const stored = parseFloat(sv.originalPrice);
-        // If the stored original is less than the current compare-at,
-        // the stored value is from a previous sale — use compare-at as the real price
-        if (!isNaN(cap) && !isNaN(stored) && stored < cap) {
-          restorePrice = live.compareAtPrice;
-          restoreCompareAt = null;
-          dbUpdates.push({
-            variantId: sv.variantId,
-            originalPrice: restorePrice,
-            originalCompareAtPrice: null,
-          });
-        }
-      }
-
-      return {
-        variantId: sv.variantId,
-        productId: sv.productId,
-        price: restorePrice,
-        compareAtPrice: restoreCompareAt,
-      };
-    }),
+    saleVariants.map((sv) => ({
+      variantId: sv.variantId,
+      productId: sv.productId,
+      price: sv.originalPrice,
+      compareAtPrice: sv.originalCompareAtPrice,
+    })),
   );
-
-  // Fix the DB so future reverts don't re-poison prices
-  for (const update of dbUpdates) {
-    await prisma.saleVariant.updateMany({
-      where: { saleId, variantId: update.variantId },
-      data: {
-        originalPrice: update.originalPrice,
-        originalCompareAtPrice: update.originalCompareAtPrice,
-        newSalePrice: calculateSalePrice(update.originalPrice, sale.discountPercentage),
-      },
-    });
-  }
 
   let revertedVariants = 0;
   let failedVariants = 0;
