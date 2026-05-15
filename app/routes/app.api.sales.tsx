@@ -96,8 +96,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     include: {
       _count: { select: { variants: true } },
       variants: {
-        select: { productId: true, appliedAt: true },
-        distinct: ["productId"],
+        select: { productId: true, appliedAt: true, revertedAt: true },
       },
     },
     orderBy: { createdAt: "desc" },
@@ -106,6 +105,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return {
     sales: sales.map((sale) => {
       const appliedAt = sale.variants.find((v) => v.appliedAt)?.appliedAt;
+      const distinctProductIds = new Set(sale.variants.map((v) => v.productId));
       return {
         id: sale.id,
         name: sale.name,
@@ -116,7 +116,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         createdAt: sale.createdAt.toISOString(),
         appliedAt: appliedAt?.toISOString() || null,
         variantCount: sale._count.variants,
-        productCount: sale.variants.length,
+        productCount: distinctProductIds.size,
         status: getSaleStatus(sale),
       };
     }),
@@ -127,10 +127,17 @@ function getSaleStatus(sale: {
   active: boolean;
   startDate: Date | null;
   endDate: Date | null;
+  variants: Array<{ appliedAt: Date | null; revertedAt: Date | null }>;
 }) {
   const now = new Date();
   if (sale.active) return "active";
   if (sale.startDate && sale.startDate > now) return "scheduled";
+
+  const wasApplied = sale.variants.some((v) => v.appliedAt !== null);
+  const allReverted =
+    wasApplied && sale.variants.every((v) => !v.appliedAt || v.revertedAt !== null);
+
+  if (allReverted) return "reverted";
   if (sale.endDate && sale.endDate <= now) return "ended";
   return "reverted";
 }
@@ -245,6 +252,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             error: `Partially reverted: ${result.revertedVariants} succeeded, ${result.failedVariants} failed. ${result.errors[0] || ""}`,
           };
         }
+        if (result.verificationFailures && result.verificationFailures.length > 0) {
+          return {
+            success: true,
+            warning: `Revert completed but ${result.verificationFailures.length} variant(s) may not have updated correctly. Check product prices.`,
+            result,
+          };
+        }
         return { success: true, result };
       } catch (err) {
         console.error("[revert action] Unhandled error:", err);
@@ -255,8 +269,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     case "delete": {
       const saleId = parseInt(formData.get("saleId") as string);
       try {
-        await deleteSale(saleId);
-        return { success: true };
+        const result = await deleteSale(admin, saleId);
+        return {
+          success: true,
+          revertedBeforeDelete: result.revertedBeforeDelete,
+        };
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) };
       }

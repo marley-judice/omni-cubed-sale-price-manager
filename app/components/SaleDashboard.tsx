@@ -87,9 +87,11 @@ export default function SaleDashboard({
   useEffect(() => {
     if (fetcher.state === "idle" && fetcher.data && fetcher.data !== lastHandledData.current) {
       lastHandledData.current = fetcher.data;
-      const data = fetcher.data as { success?: boolean; error?: string };
+      const data = fetcher.data as { success?: boolean; error?: string; warning?: string };
       if (data.error) {
         onToast(data.error, true);
+      } else if (data.warning) {
+        onToast(data.warning, true);
       } else if (data.success) {
         onToast("Sale updated successfully");
       }

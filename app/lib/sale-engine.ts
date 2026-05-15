@@ -166,6 +166,7 @@ export async function createAndApplySale(
   let appliedVariants = 0;
   let failedVariants = 0;
   const errors: string[] = [];
+  const successfulVariantIds: string[] = [];
 
   for (const [productId, variants] of mutationPayloads) {
     try {
@@ -186,6 +187,7 @@ export async function createAndApplySale(
         );
       } else {
         appliedVariants += variants.length;
+        successfulVariantIds.push(...variants.map((v) => v.id));
       }
     } catch (err) {
       failedVariants += variants.length;
@@ -195,14 +197,19 @@ export async function createAndApplySale(
   }
 
   const now = new Date();
-  await prisma.sale.update({
-    where: { id: sale.id },
-    data: { active: true },
-  });
-  await prisma.saleVariant.updateMany({
-    where: { saleId: sale.id },
-    data: { appliedAt: now },
-  });
+  if (appliedVariants > 0) {
+    await prisma.sale.update({
+      where: { id: sale.id },
+      data: { active: true },
+    });
+    await prisma.saleVariant.updateMany({
+      where: {
+        saleId: sale.id,
+        variantId: { in: successfulVariantIds },
+      },
+      data: { appliedAt: now },
+    });
+  }
 
   await prisma.auditLog.create({
     data: {
@@ -277,6 +284,7 @@ interface RevertResult {
   failedVariants: number;
   modifiedVariants: string[];
   errors: string[];
+  verificationFailures?: string[];
 }
 
 export async function revertSale(
@@ -404,7 +412,42 @@ export async function revertSale(
     await sleep(RATE_LIMIT_DELAY_MS);
   }
 
-  console.log(`[revertSale] Sale ${saleId}: done — reverted=${revertedVariants}, failed=${failedVariants}, errors=${errors.length}`);
+  // Verify prices were actually restored on Shopify
+  const verificationFailures: string[] = [];
+  if (successfulVariantIds.length > 0) {
+    const batchSize = 50;
+    for (let i = 0; i < successfulVariantIds.length; i += batchSize) {
+      const batch = successfulVariantIds.slice(i, i + batchSize);
+      try {
+        const response = await admin.graphql(GET_VARIANT_CURRENT_PRICES_QUERY, {
+          variables: { ids: batch },
+        });
+        const json = await response.json();
+        const nodes = json.data?.nodes || [];
+        for (const node of nodes) {
+          if (!node) continue;
+          const sv = saleVariants.find((s) => s.variantId === node.id);
+          if (sv && node.price !== sv.originalPrice) {
+            verificationFailures.push(
+              `${node.id}: expected ${sv.originalPrice}, got ${node.price}`,
+            );
+          }
+        }
+      } catch (err) {
+        console.error(`[revertSale] Sale ${saleId}: post-revert verification failed:`, err);
+      }
+      if (i + batchSize < successfulVariantIds.length) await sleep(RATE_LIMIT_DELAY_MS);
+    }
+  }
+
+  if (verificationFailures.length > 0) {
+    console.error(
+      `[revertSale] Sale ${saleId}: ${verificationFailures.length} variant(s) did NOT revert correctly:`,
+      verificationFailures,
+    );
+  }
+
+  console.log(`[revertSale] Sale ${saleId}: done — reverted=${revertedVariants}, failed=${failedVariants}, verificationFailures=${verificationFailures.length}`);
 
   const now = new Date();
 
@@ -432,12 +475,13 @@ export async function revertSale(
         revertedVariants,
         failedVariants,
         modifiedVariants,
+        verificationFailures,
         errors,
       }),
     },
   });
 
-  return { revertedVariants, failedVariants, modifiedVariants, errors };
+  return { revertedVariants, failedVariants, modifiedVariants, errors, verificationFailures };
 }
 
 export async function activateScheduledSale(
@@ -453,7 +497,6 @@ export async function activateScheduledSale(
     throw new Error("Sale not found or already active");
   }
 
-  // Check for conflicts with currently active sales before applying
   const allVariantIds = sale.variants.map((v) => v.variantId);
   const conflicts = await checkVariantConflicts(allVariantIds);
   if (conflicts.length > 0) {
@@ -465,31 +508,88 @@ export async function activateScheduledSale(
     );
   }
 
+  // Re-fetch live prices from Shopify so we capture the true current state,
+  // not stale values from when the sale was first created or last reverted.
+  const livePrices = new Map<string, { price: string; compareAtPrice: string | null }>();
+  const batchSize = 50;
+  for (let i = 0; i < allVariantIds.length; i += batchSize) {
+    const batch = allVariantIds.slice(i, i + batchSize);
+    try {
+      const response = await admin.graphql(GET_VARIANT_CURRENT_PRICES_QUERY, {
+        variables: { ids: batch },
+      });
+      const json = await response.json();
+      const nodes = json.data?.nodes || [];
+      for (const node of nodes) {
+        if (!node) continue;
+        livePrices.set(node.id, {
+          price: node.price,
+          compareAtPrice: node.compareAtPrice,
+        });
+      }
+    } catch (err) {
+      console.error(`[activateScheduledSale] Sale ${saleId}: failed to fetch live prices:`, err);
+    }
+    if (i + batchSize < allVariantIds.length) await sleep(RATE_LIMIT_DELAY_MS);
+  }
+
   const mutationPayloads = new Map<
     string,
     Array<{ id: string; price: string; compareAtPrice: string }>
   >();
 
+  // Track DB updates for variants whose stored originals are stale
+  const variantUpdates: Array<{ variantId: string; originalPrice: string; originalCompareAtPrice: string | null; newSalePrice: string }> = [];
+
   for (const sv of sale.variants) {
+    const live = livePrices.get(sv.variantId);
+
+    // Use live prices if available; fall back to stored originals
+    const currentPrice = live?.price ?? sv.originalPrice;
+    const currentCompareAt = live ? live.compareAtPrice : sv.originalCompareAtPrice;
+
+    const freshSalePrice = calculateSalePrice(currentPrice, sale.discountPercentage);
+
     const hasExistingCompareAt =
-      sv.originalCompareAtPrice !== null &&
-      sv.originalCompareAtPrice !== "0" &&
-      sv.originalCompareAtPrice !== "0.00";
+      currentCompareAt !== null &&
+      currentCompareAt !== "0" &&
+      currentCompareAt !== "0.00";
 
     const existing = mutationPayloads.get(sv.productId) || [];
     existing.push({
       id: sv.variantId,
-      price: sv.newSalePrice,
-      compareAtPrice: hasExistingCompareAt
-        ? sv.originalCompareAtPrice!
-        : sv.originalPrice,
+      price: freshSalePrice,
+      compareAtPrice: hasExistingCompareAt ? currentCompareAt! : currentPrice,
     });
     mutationPayloads.set(sv.productId, existing);
+
+    // Update stored values if they changed
+    if (currentPrice !== sv.originalPrice || freshSalePrice !== sv.newSalePrice || currentCompareAt !== sv.originalCompareAtPrice) {
+      variantUpdates.push({
+        variantId: sv.variantId,
+        originalPrice: currentPrice,
+        originalCompareAtPrice: currentCompareAt,
+        newSalePrice: freshSalePrice,
+      });
+    }
+  }
+
+  // Persist refreshed original prices so revert will restore correctly
+  for (const update of variantUpdates) {
+    await prisma.saleVariant.updateMany({
+      where: { saleId, variantId: update.variantId },
+      data: {
+        originalPrice: update.originalPrice,
+        originalCompareAtPrice: update.originalCompareAtPrice,
+        newSalePrice: update.newSalePrice,
+      },
+    });
   }
 
   let appliedVariants = 0;
   let failedVariants = 0;
   const errors: string[] = [];
+  const successfulVariantIds: string[] = [];
 
   for (const [productId, variants] of mutationPayloads) {
     try {
@@ -510,6 +610,7 @@ export async function activateScheduledSale(
         );
       } else {
         appliedVariants += variants.length;
+        successfulVariantIds.push(...variants.map((v) => v.id));
       }
     } catch (err) {
       failedVariants += variants.length;
@@ -519,14 +620,19 @@ export async function activateScheduledSale(
   }
 
   const now = new Date();
-  await prisma.sale.update({
-    where: { id: saleId },
-    data: { active: true },
-  });
-  await prisma.saleVariant.updateMany({
-    where: { saleId },
-    data: { appliedAt: now },
-  });
+  if (appliedVariants > 0) {
+    await prisma.sale.update({
+      where: { id: saleId },
+      data: { active: true },
+    });
+    await prisma.saleVariant.updateMany({
+      where: {
+        saleId,
+        variantId: { in: successfulVariantIds },
+      },
+      data: { appliedAt: now, revertedAt: null },
+    });
+  }
 
   await prisma.auditLog.create({
     data: {
@@ -537,6 +643,7 @@ export async function activateScheduledSale(
         totalVariants: sale.variants.length,
         appliedVariants,
         failedVariants,
+        refreshedVariants: variantUpdates.length,
         errors,
       }),
     },
@@ -551,15 +658,57 @@ export async function activateScheduledSale(
   };
 }
 
-export async function deleteSale(saleId: number): Promise<void> {
+export async function deleteSale(
+  admin: { graphql: Function } | null,
+  saleId: number,
+): Promise<{ revertedBeforeDelete: boolean; revertResult?: RevertResult }> {
+  const sale = await prisma.sale.findUnique({
+    where: { id: saleId },
+    include: { variants: true },
+  });
+
+  if (!sale) {
+    throw new Error("Sale not found");
+  }
+
+  let revertedBeforeDelete = false;
+  let revertResult: RevertResult | undefined;
+
+  const hasUnrevertedVariants = sale.variants.some((v) => v.appliedAt && !v.revertedAt);
+
+  if (hasUnrevertedVariants && admin) {
+    console.log(`[deleteSale] Sale ${saleId} has unreverted variants — reverting prices before delete`);
+    revertResult = await revertSale(admin, saleId, true);
+    revertedBeforeDelete = true;
+
+    if (revertResult.failedVariants > 0) {
+      throw new Error(
+        `Cannot delete: failed to revert ${revertResult.failedVariants} variant(s). ` +
+        `Revert prices first, then delete. ${revertResult.errors[0] || ""}`,
+      );
+    }
+  }
+
   await prisma.auditLog.create({
     data: {
       saleId,
       action: "DELETE",
-      details: JSON.stringify({ deletedAt: new Date().toISOString() }),
+      details: JSON.stringify({
+        deletedAt: new Date().toISOString(),
+        revertedBeforeDelete,
+        revertResult: revertResult
+          ? {
+              revertedVariants: revertResult.revertedVariants,
+              failedVariants: revertResult.failedVariants,
+            }
+          : null,
+      }),
     },
   });
+
   await prisma.sale.delete({ where: { id: saleId } });
+
+  return { revertedBeforeDelete, revertResult };
 }
 
 export function getExcludedCollectionPatterns(): string[] {
